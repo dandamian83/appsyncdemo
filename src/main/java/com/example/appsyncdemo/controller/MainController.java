@@ -1,5 +1,6 @@
 package com.example.appsyncdemo.controller;
 
+import com.example.appsyncdemo.aws.AppSyncUtil;
 import com.example.appsyncdemo.client.Notification;
 import com.example.appsyncdemo.client.SomeRequest;
 import com.example.appsyncdemo.client.SomeResponse;
@@ -12,8 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import reactor.core.publisher.Mono;
-import org.springframework.web.reactive.function.client.ClientResponse;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -25,44 +25,24 @@ import java.util.Map;
 public class MainController {
 
     @Autowired
-    WebClient.RequestBodySpec requestBodySpec;
-
-    ObjectMapper objectMapper = new ObjectMapper();
+    AppSyncUtil appSyncUtil;
 
     @PostMapping("/sendMessage")
     public SomeResponse sendMessage(@RequestBody SomeRequest someRequest) throws JsonProcessingException {
         log.debug("sendMessage, " + someRequest);
-        String channel = "channelOne";
 
         Notification not = Notification.builder()
                 .msg(someRequest.getMessage())
                 .randNo(Integer.toString((int)(Math.random() * 10000 % 9999)))
                 .build();
-        String escapedJsonString = objectMapper.writeValueAsString(
-                objectMapper.writeValueAsString(not));
 
-        Map<String, Object> requestBody = new HashMap<>();
-        String queryString = "mutation add {"
-                + "    publish("
-                + "        data:" + escapedJsonString + ","
-                + "         name: \"" + someRequest.getChannel() + "\""
-                + "    ){"
-                + "        data"
-                + "        name"
-                + "    }"
-                + "}";
-        log.debug("queryString {}", queryString);
-        requestBody.put("query", queryString);
+        try {
+            appSyncUtil.push(not, someRequest.getChannel());
+        } catch (Exception e) {
+            log.error("Exception", e);
+            return SomeResponse.builder().response(e.getMessage()).build();
+        }
 
-        WebClient.ResponseSpec response = requestBodySpec
-                .body(BodyInserters.fromValue(requestBody))
-                .accept(MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML)
-                .acceptCharset(StandardCharsets.UTF_8)
-                .retrieve();
-
-        String bodyString = response.bodyToMono(String.class).block();
-
-        log.debug("bodyString {}", bodyString);
 
         return SomeResponse.builder().response(someRequest.getMessage()).build();
     }
